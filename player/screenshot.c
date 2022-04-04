@@ -77,11 +77,33 @@ static char *stripext(void *talloc_ctx, const char *s)
 }
 
 static bool write_screenshot(struct mp_cmd_ctx *cmd, struct mp_image *img,
-                             const char *filename, struct image_writer_opts *opts)
+                             const char *infilename, struct image_writer_opts *opts)
 {
     struct MPContext *mpctx = cmd->mpctx;
     struct image_writer_opts *gopts = mpctx->opts->screenshot_image_opts;
     struct image_writer_opts opts_copy = opts ? *opts : *gopts;
+    const char *filename = infilename;
+
+#ifdef _WIN32
+    char *filename_win = NULL;
+    struct bstr bfname = bstr0(filename);
+
+    if (bfname.len >= MAX_PATH) {
+        // presumably \\?\ (long-path) or \\.\ (device-namespace) prefixes
+        if (mp_path_is_absolute(bfname) && filename[0] != '\\') {
+            filename_win = talloc_asprintf(NULL, "\\\\?\\%s", filename);
+        } else {
+            filename_win = talloc_strdup(NULL, filename);
+        }
+
+        filename = filename_win;
+
+        // Long-paths require Windows-style path separators.
+        char *cur = filename_win;
+        while ((cur = strchr(cur, '/')) != NULL)
+            *cur = '\\';
+    }
+#endif
 
     mp_cmd_msg(cmd, MSGL_V, "Starting screenshot: '%s'", filename);
 
@@ -97,6 +119,11 @@ static bool write_screenshot(struct mp_cmd_ctx *cmd, struct mp_image *img,
     } else {
         mp_cmd_msg(cmd, MSGL_ERR, "Error writing screenshot!");
     }
+
+#ifdef _WIN32
+    talloc_free(filename_win);
+#endif
+
     return ok;
 }
 
@@ -125,6 +152,30 @@ static void append_filename(char **s, const char *f)
     char *append = sanitize_filename(NULL, f);
     *s = talloc_strdup_append(*s, append);
     talloc_free(append);
+}
+
+static void trim_invalid_utf8(char *s, size_t len)
+{
+    for (int i = 1; i <= 3; i++) {
+        if (bstr_parse_utf8_code_length(s[len-i]) > i) {
+            s[len-i] = 0;
+            return;
+        }
+    }
+}
+
+// Long screenshot names (especially with %{sub-text}) can be longer than file
+// systems support. This helps and also removes trailing invalid codepoints.
+static void truncate_long_base_filename(char *s, const size_t max_utf8_bytes)
+{
+    char *basename = mp_basename(s);
+    size_t len = strlen(basename);
+
+    if (len <= max_utf8_bytes)
+        return;
+
+    basename[max_utf8_bytes] = 0;
+    trim_invalid_utf8(basename, max_utf8_bytes);
 }
 
 static char *create_fname(struct MPContext *mpctx, char *template,
@@ -263,6 +314,8 @@ static char *create_fname(struct MPContext *mpctx, char *template,
     }
 
     res = talloc_strdup_append(res, template);
+    // 255 - strlen(".ext")
+    truncate_long_base_filename(res, 255 - 1 - strlen(file_ext));
     res = talloc_asprintf_append(res, ".%s", file_ext);
     char *fname = mp_get_user_path(NULL, mpctx->global, res);
     talloc_free(res);
