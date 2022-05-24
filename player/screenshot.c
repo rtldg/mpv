@@ -178,8 +178,20 @@ static void truncate_long_base_filename(char *s, const size_t max_utf8_bytes)
     trim_invalid_utf8(basename, max_utf8_bytes);
 }
 
+static void trim_junk(char *s)
+{
+    for (size_t i = strlen(s)-1; i >= 0; i--) {
+        if (s[i] == '.' || s[i] == '_' || (s[i] > 0 && s[i] <= ' ')) {
+            s[i] = 0;
+        } else {
+            break;
+        }
+    }
+}
+
 static char *create_fname(struct MPContext *mpctx, char *template,
-                          const char *file_ext, int *sequence, int *frameno)
+                          const char *file_ext, int *sequence, int *frameno,
+                          int mode)
 {
     char *res = talloc_strdup(NULL, ""); //empty string, non-NULL context
 
@@ -296,13 +308,22 @@ static char *create_fname(struct MPContext *mpctx, char *template,
             if (!end)
                 goto error_exit;
             struct bstr prop = bstr_splice(bstr0(template), 0, end - template);
+            template = end + 1;
+
+            if (0 == bstrcmp(prop, bstr0("sub-text-xx"))) {
+                if (mode & MODE_SUBTITLES) {
+                    prop.len -= 3;
+                } else {
+                    break;
+                }
+            }
+
             char *tmp = talloc_asprintf(NULL, "${%.*s}", BSTR_P(prop));
             char *s = mp_property_expand_string(mpctx, tmp);
             talloc_free(tmp);
             if (s)
                 append_filename(&res, s);
             talloc_free(s);
-            template = end + 1;
             break;
         }
         case '%':
@@ -316,6 +337,7 @@ static char *create_fname(struct MPContext *mpctx, char *template,
     res = talloc_strdup_append(res, template);
     // 255 - strlen(".ext")
     truncate_long_base_filename(res, 255 - 1 - strlen(file_ext));
+    trim_junk(res);
     res = talloc_asprintf_append(res, ".%s", file_ext);
     char *fname = mp_get_user_path(NULL, mpctx->global, res);
     talloc_free(res);
@@ -338,7 +360,8 @@ static char *gen_fname(struct mp_cmd_ctx *cmd, const char *file_ext)
                                    ctx->mpctx->opts->screenshot_template,
                                    file_ext,
                                    &sequence,
-                                   &ctx->frameno);
+                                   &ctx->frameno,
+                                   cmd->args[0].v.i & 3);
 
         if (!fname) {
             mp_cmd_msg(cmd, MSGL_ERR, "Invalid screenshot filename "
