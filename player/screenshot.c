@@ -128,7 +128,8 @@ static bool write_screenshot(struct mp_cmd_ctx *cmd, struct mp_image *img,
     return ok;
 }
 
-#ifdef _WIN32
+//#ifdef _WIN32
+#if 1
 #define ILLEGAL_FILENAME_CHARS "?\"/\\<>*|:"
 #else
 #define ILLEGAL_FILENAME_CHARS "/"
