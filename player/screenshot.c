@@ -182,7 +182,7 @@ static void truncate_long_base_filename(char *s, const size_t max_utf8_bytes)
 
 static void trim_junk(char *s)
 {
-    for (size_t i = strlen(s)-1; i >= 0; i--) {
+    for (int i = strlen(s)-1; i > -1; i--) {
         if (s[i] == '.' || s[i] == '_' || (s[i] > 0 && s[i] <= ' ')) {
             s[i] = 0;
         } else {
