@@ -163,7 +163,7 @@ static void trim_junk(char *s)
 }
 
 static char *create_fname(struct MPContext *mpctx, char *template,
-                          const char *file_ext, int *sequence, int *frameno)
+                          const char *file_ext, int *sequence, int *frameno, int mode)
 {
     char *res = talloc_strdup(NULL, ""); //empty string, non-NULL context
 
@@ -280,13 +280,22 @@ static char *create_fname(struct MPContext *mpctx, char *template,
             if (!end)
                 goto error_exit;
             struct bstr prop = bstr_splice(bstr0(template), 0, end - template);
+            template = end + 1;
+
+            if (0 == bstrcmp(prop, bstr0("sub-text-xx"))) {
+                if (mode & MODE_SUBTITLES) {
+                    prop.len -= 3;
+                } else {
+                    break;
+                }
+            }
+
             char *tmp = talloc_asprintf(NULL, "${%.*s}", BSTR_P(prop));
             char *s = mp_property_expand_string(mpctx, tmp);
             talloc_free(tmp);
             if (s)
                 append_filename(&res, s);
             talloc_free(s);
-            template = end + 1;
             break;
         }
         case '%':
@@ -322,7 +331,7 @@ static char *gen_fname(struct mp_cmd_ctx *cmd, const char *file_ext)
                                    ctx->mpctx->opts->screenshot_template,
                                    file_ext,
                                    &sequence,
-                                   &ctx->frameno);
+                                   &ctx->frameno, cmd->args[0].v.i & 3);
 
         if (!fname) {
             mp_cmd_msg(cmd, MSGL_ERR, "Invalid screenshot filename "
