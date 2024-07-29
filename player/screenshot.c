@@ -150,6 +150,17 @@ static void truncate_long_base_filename(char *s, const size_t ext_len)
     }
 }
 
+static void trim_junk(char *s)
+{
+    for (int i = strlen(s)-1; i > -1; i--) {
+        if (s[i] == '.' || s[i] == '_' || (s[i] > 0 && s[i] <= ' ')) {
+            s[i] = 0;
+        } else {
+            break;
+        }
+    }
+}
+
 static char *create_fname(struct MPContext *mpctx, char *template,
                           const char *file_ext, int *sequence, int *frameno)
 {
@@ -287,6 +298,7 @@ static char *create_fname(struct MPContext *mpctx, char *template,
 
     res = talloc_strdup_append(res, template);
     truncate_long_base_filename(res, strlen(file_ext));
+    trim_junk(res);
     res = talloc_asprintf_append(res, ".%s", file_ext);
     char *fname = mp_get_user_path(NULL, mpctx->global, res);
     talloc_free(res);
